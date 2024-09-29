@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRUD и Уведомления</title>
+</head>
+<body>
+    <h1>CRUD Постов и Уведомления</h1>
+
+    <h2>Создать новый пост</h2>
+    <form id="post-form">
+        <input type="text" id="title" placeholder="Заголовок" required>
+        <textarea id="content" placeholder="Контент" required></textarea>
+        <button type="submit">Создать пост</button>
+    </form>
+
+    <h2>Список постов</h2>
+    <ul id="post-list"></ul>
+
+    <h2>Уведомления</h2>
+    <ul id="notifications"></ul>
+
+    <script>
+        const postForm = document.getElementById('post-form');
+        const postList = document.getElementById('post-list');
+        const notificationsList = document.getElementById('notifications');
+
+        // Проверяем поддержку Web Notifications API
+        if (!("Notification" in window)) {
+            console.log("Этот браузер не поддерживает уведомления.");
+        } else {
+            console.log("Уведомления поддерживаются.");
+        }
+
+        // Запрашиваем у пользователя разрешение на отправку push-уведомлений
+        function askNotificationPermission() {
+            if (Notification.permission === 'granted') {
+                console.log('Разрешение на уведомления уже получено');
+            } else if (Notification.permission === 'denied') {
+                console.log('Уведомления отключены пользователем');
+            } else {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        console.log('Разрешение на отправку уведомлений получено');
+                    } else {
+                        console.log('Уведомления запрещены пользователем');
+                    }
+                });
+            }
+        }
+
+        // Вызов функции запроса разрешения при загрузке страницы
+        askNotificationPermission();
+
+        // Подключение к WebSocket для уведомлений
+        const socket = new WebSocket('ws://localhost:8000/ws/notifications/');
+
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            console.log('Получено уведомление через WebSocket:', data.message);
+
+            const notification = document.createElement('li');
+            notification.textContent = data.message;
+            notificationsList.appendChild(notification);
+
+            // Отправляем push-уведомление, если разрешение на это получено
+            if (Notification.permission === 'granted') {
+                console.log('Отправляем push-уведомление');
+                const pushNotification = new Notification('Новое уведомление', {
+                    body: data.message,
+                    icon: 'https://via.placeholder.com/48',  // Иконка для уведомления
+                });
+
+                // Открытие страницы или фокусировка при клике на уведомление
+                pushNotification.onclick = function() {
+                    window.focus();
+                    pushNotification.close();
+                };
+            } else {
+                console.log('Уведомления отключены или не разрешены');
+            }
+        };
+
+        // Получение списка постов
+        function fetchPosts() {
+            fetch('/posts/posts/')
+                .then(response => response.json())
+                .then(data => {
+                    postList.innerHTML = '';
+                    data.forEach(post => {
+                        const listItem = document.createElement('li');
+                        listItem.textContent = `${post.title}: ${post.content}`;
+                        postList.appendChild(listItem);
+                    });
+                });
+        }
+
+        // Создание нового поста
+        postForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const title = document.getElementById('title').value;
+            const content = document.getElementById('content').value;
+
+            fetch('/posts/posts/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ title, content })
+            })
+            .then(response => response.json())
+            .then(data => {
+                fetchPosts(); // Обновляем список постов
+                postForm.reset(); // Очищаем форму
+            });
+        });
+
+        // Загрузка постов при загрузке страницы
+        fetchPosts();
+    </script>
+</body>
+</html>
